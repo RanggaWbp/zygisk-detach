@@ -20,21 +20,22 @@
 
 #define PM_DESC u"android.content.pm.IPackageManager"
 
-// Berapa banyak word (uint32_t) yang kita coba scan sebelum menyerah.
-// Header binder bisa berbeda panjang antar SDK/ROM (strict-mode policy,
-// work-source uid, dll) - daripada hardcode 1 offset seperti versi lama
-// (getBinderHeadersLen(sdk) yang cuma lihat SDK level), kita coba
-// beberapa kandidat offset dan VALIDASI ISINYA. Ini fix utk root cause
-// "detach selalu gagal" di ROM yang layout parcel-nya beda dari AOSP.
+// How many words (uint32_t) we try to scan before giving up.
+// The binder header length can vary between SDK versions and ROMs
+// (strict-mode policy, work-source uid, etc.) - rather than hardcoding a
+// single offset like the old approach (getBinderHeadersLen(sdk), which only
+// looked at the SDK level), we try several candidate offsets and VALIDATE
+// their content. This fixes the root cause of "detach always fails" on ROMs
+// whose parcel layout diverges from AOSP.
 #define MAX_HEADER_SCAN_WORDS 8
 
 static char* DETACH_TXT = nullptr;
 static size_t DETACH_TXT_SIZE = 0;
 static uint32_t getApplicationEnabledSetting_code = 0;
 
-// Cek apakah pada offset `header_words` word dari awal parcel terdapat
-// string16 yang cocok dengan PM_DESC. Kalau cocok, kembalikan posisi
-// byte tepat SETELAH descriptor lewat out_cursor.
+// Check whether, at an offset of `header_words` words from the start of the
+// parcel, there is a string16 matching PM_DESC. If it matches, return the
+// byte position immediately AFTER the descriptor via out_cursor.
 static inline bool try_match_desc_at(FakeParcel parcel, uint32_t header_words,
                                       size_t data_size, uint32_t* out_cursor) {
     parcel.skip(header_words * sizeof(uint32_t));
@@ -42,8 +43,9 @@ static inline bool try_match_desc_at(FakeParcel parcel, uint32_t header_words,
     if ((size_t)parcel.getCursor() + 4 > data_size) return false;
 
     uint32_t descLen = parcel.readInt32();
-    // sanity bound: nama kelas Java gak mungkin sepanjang itu, dan ini
-    // mencegah readString16 lompat keluar buffer kalau offset salah
+    // Sanity bound: a Java class name is never this long, and this also
+    // prevents readString16 from reading past the buffer if the offset
+    // guess is wrong.
     if (descLen == 0 || descLen > 512) return false;
     if ((size_t)parcel.getCursor() + (descLen + 1) * sizeof(char16_t) > data_size) return false;
 
@@ -63,9 +65,9 @@ static inline void detach(PParcel* pparcel, uint32_t code) {
     uint32_t cursor = 0;
     bool found = false;
 
-    // Coba tiap kemungkinan panjang header alih-alih percaya satu nilai
-    // tetap berdasarkan SDK level saja - inilah bug lama yang bikin
-    // detach gagal total di sebagian device/ROM.
+    // Try every plausible header length instead of trusting a single fixed
+    // value derived from the SDK level alone - this was the long-standing
+    // bug that made detach fail completely on some devices/ROMs.
     for (uint32_t words = 0; words <= MAX_HEADER_SCAN_WORDS; words++) {
         if (try_match_desc_at(parcel, words, pparcel->data_size, &cursor)) {
             found = true;
@@ -83,7 +85,7 @@ static inline void detach(PParcel* pparcel, uint32_t code) {
 
     auto body = FakeParcel(pparcel->data);
     body.skip(cursor);
-    body.skip(2);  // trailing policy byte after descriptor (unchanged from upstream)
+    body.skip(2);  // 2 trailing policy bytes after the descriptor (unchanged from upstream)
 
     if ((size_t)body.getCursor() + 4 > pparcel->data_size) return;
     auto pkgLen = body.readInt32();
@@ -99,7 +101,7 @@ static inline void detach(PParcel* pparcel, uint32_t code) {
     while (i < DETACH_TXT_SIZE && (dlen = DETACH_TXT[i])) {
         const char* dptr = DETACH_TXT + i + sizeof(dlen);
         i += sizeof(dlen) + dlen;
-        if (i > DETACH_TXT_SIZE) break;  // detach.bin corrupt - stop, jangan OOB read
+        if (i > DETACH_TXT_SIZE) break;  // detach.bin is corrupt - stop, avoid an out-of-bounds read
         if (dlen != pkgLenB) continue;
         if (memcmp(dptr, pkg, dlen) == 0) {
             *pkg = 0;
