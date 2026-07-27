@@ -1,7 +1,5 @@
 /* ---------------------------------------------------------------
-   Design tokens
-   Concept: a "severed trace/wire" - a visual metaphor for binder detach.
-   Dark, technical, no CDN fonts (this WebUI must keep working offline).
+   Design Tokens & Modern UI Overhaul
 ------------------------------------------------------------------ */
 :root {
     --bg: #0b0e0f;
@@ -15,7 +13,7 @@
     --text-dim: #9ba1a3;
     --text-faint: #5e6568;
     
-    --accent: #10b981; /* Emerald Green */
+    --accent: #10b981;
     --accent-soft: rgba(16, 185, 129, 0.15);
     --accent-glow: rgba(16, 185, 129, 0.4);
     --danger: #f43f5e;
@@ -36,11 +34,10 @@ body {
     background: var(--bg);
     color: var(--text);
     font-family: var(--font-ui);
-    padding-bottom: 120px; /* Space for bottom bar */
+    padding-bottom: 120px;
     -webkit-font-smoothing: antialiased;
 }
 
-/* Header */
 .topbar {
     position: sticky;
     top: 0;
@@ -140,7 +137,6 @@ body {
     box-shadow: 0 4px 12px var(--accent-glow);
 }
 
-/* App List */
 .apps-list {
     padding: 12px 16px 0;
     display: flex;
@@ -191,7 +187,6 @@ body {
     color: var(--accent);
 }
 
-/* Modern Toggle Switch */
 .switch {
     position: relative;
     display: inline-block;
@@ -238,7 +233,6 @@ input:checked + .slider:before {
     background-color: #ffffff;
 }
 
-/* Empty & Loading States */
 .state-container {
     display: none;
     flex-direction: column;
@@ -264,7 +258,6 @@ input:checked + .slider:before {
     to { transform: rotate(360deg); }
 }
 
-/* Bottom Action Bar */
 .action-bar {
     position: fixed;
     left: 0;
