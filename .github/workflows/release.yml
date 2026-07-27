@@ -1,0 +1,124 @@
+name: Build and release
+
+# Jalan otomatis kalau kamu push tag berbentuk v1.2.3
+# Contoh cara pakai dari laptop:
+#   git tag v1.23.3
+#   git push origin v1.23.3
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # perlu ini biar boleh upload ke Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Ambil versi dari tag
+        id: ver
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      # ---------- 1. Build zygisk/*.so pakai Android NDK ----------
+      - name: Setup Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
+      - name: Build zygisk native module (semua ABI)
+        env:
+          NDK: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -e
+          mkdir -p out/stage/zygisk
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          declare -A ABI_TRIPLE=(
+            [arm64-v8a]="aarch64-linux-android24"
+            [armeabi-v7a]="armv7a-linux-androideabi24"
+            [x86]="i686-linux-android24"
+            [x86_64]="x86_64-linux-android24"
+          )
+          for abi in "${!ABI_TRIPLE[@]}"; do
+            triple="${ABI_TRIPLE[$abi]}"
+            echo "building $abi ($triple)"
+            "$TOOLCHAIN/${triple}-clang++" -shared -fPIC -O2 -Wall \
+              -I zygisk/jni \
+              zygisk/jni/module.cpp zygisk/jni/binder.cpp \
+              -llog -o "out/stage/zygisk/${abi}.so"
+          done
+
+      # ---------- 2. Build cli 'detach' pakai Rust ----------
+      - name: Setup Rust
+        run: |
+          rustup toolchain install nightly
+          rustup default nightly
+          rustup target add \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            x86_64-linux-android \
+            i686-linux-android
+
+      - name: Install cargo-ndk (linker helper utk target Android)
+        run: cargo install cargo-ndk
+
+      - name: Build cli semua arch
+        env:
+          NDK: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -e
+          cd cli
+          declare -A RUST_TARGET=(
+            [arm64]="aarch64-linux-android"
+            [arm]="armv7-linux-androideabi"
+            [x64]="x86_64-linux-android"
+            [x86]="i686-linux-android"
+          )
+          for arch in "${!RUST_TARGET[@]}"; do
+            target="${RUST_TARGET[$arch]}"
+            echo "building cli for $arch ($target)"
+            cargo ndk --platform 24 --target "$target" -- build --release --profile release-pr
+            mkdir -p "../out/stage/bin/$arch"
+            cp "target/$target/release-pr/cli" "../out/stage/bin/$arch/detach"
+          done
+          # Catatan: binary 'ksu_profile' sengaja tidak di-build di sini
+          # karena source-nya tidak ada di repo ini. customize.sh akan
+          # tetap jalan tanpa dia (bagian itu cuma opsional untuk
+          # auto-set profile KernelSU).
+
+      # ---------- 3. Build ksu-webui ----------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build webui
+        run: |
+          set -e
+          cd ksu-webui
+          npm install
+          npx parcel build src/index.html --dist-dir dist --public-url .
+          mkdir -p ../out/stage/webroot
+          cp -r dist/* ../out/stage/webroot/
+
+      # ---------- 4. Susun & zip modul ----------
+      - name: Assemble module zip
+        run: |
+          set -e
+          cp -r module/META-INF out/stage/
+          cp module/module.prop module/customize.sh module/post-fs-data.sh out/stage/
+          chmod +x out/stage/customize.sh out/stage/post-fs-data.sh
+          cd out/stage
+          zip -r9 "../zygisk-detach-${{ steps.ver.outputs.tag }}.zip" . -x '.*'
+
+      # ---------- 5. Upload ke GitHub Release ----------
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/zygisk-detach-${{ steps.ver.outputs.tag }}.zip
+          name: ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
