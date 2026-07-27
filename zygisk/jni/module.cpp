@@ -181,11 +181,8 @@ static bool runPostSpecialize(const char* process, zygisk::Api* api, JNIEnv* env
         return false;
     }
 
-    if (!api->pltHookRegister(dev, inode, "_ZN7android14IPCThreadState8transactEijRKNS_6ParcelEPS1_j",
-                              (void**)&transact_hook, (void**)&transact_orig)) {
-        LOGD("ERROR: pltHookRegister failed");
-        return false;
-    }
+    api->pltHookRegister(dev, inode, "_ZN7android14IPCThreadState8transactEijRKNS_6ParcelEPS1_j",
+                         (void**)&transact_hook, (void**)&transact_orig);
     if (!api->pltHookCommit()) {
         LOGD("ERROR: pltHookCommit");
         return false;
