@@ -57,7 +57,6 @@ function updatePendingLabel() {
     }
 }
 
-// Perbaikan Search & Filter
 function applyFilterAndSearch() {
     const searchVal = searchInput.value.toLowerCase().trim();
     let visibleCount = 0;
@@ -69,7 +68,7 @@ function applyFilterAndSearch() {
         const matchesFilter = currentFilter === 'all' || state === currentFilter;
 
         if (matchesSearch && matchesFilter) {
-            row.style.display = 'flex'; // Paksa flex agar tidak di-override
+            row.style.display = 'flex';
             visibleCount++;
         } else {
             row.style.display = 'none';
@@ -84,7 +83,6 @@ function sortChecked() {
         .forEach(node => appsList.appendChild(node));
 }
 
-// Perbaikan Toggle Detach/Attach (Generate Dinamis)
 function populateApp(name, checked) {
     const row = document.createElement('div');
     row.className = 'app-row';
