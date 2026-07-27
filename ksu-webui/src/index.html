@@ -1,64 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-	<title>zygisk-detach</title>
-	<link rel="stylesheet" href="styles.css" type="text/css">
-	<script type="module" crossorigin src="index.js" type="text/javascript"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zygisk Detach</title>
+    <link rel="stylesheet" href="styles.txt">
 </head>
-
 <body>
-	<header class="topbar">
-		<div class="title-row">
-			<h1>Detach</h1>
-			<span class="stat-pill" id="stat-pill">0 / 0 detached</span>
-		</div>
-		<div class="search-row">
-			<svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-				<circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6" />
-				<path d="M18 18L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-			</svg>
-			<input type="text" class="search-input" id="search" placeholder="Search package name…" autocomplete="off"
-				spellcheck="false">
-		</div>
-		<div class="filter-row" id="filters" role="tablist" aria-label="Filter packages">
-			<button class="chip is-active" data-filter="all" role="tab" aria-selected="true">All</button>
-			<button class="chip" data-filter="detached" role="tab" aria-selected="false">Detached</button>
-			<button class="chip" data-filter="attached" role="tab" aria-selected="false">Attached</button>
-		</div>
-	</header>
 
-	<main id="apps-list" class="apps-list" aria-live="polite"></main>
+    <header class="topbar">
+        <div class="title-row">
+            <h1>Detach Manager</h1>
+            <div id="stat-pill" class="stat-pill">0 / 0 detached</div>
+        </div>
+        <div class="search-row">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            <input type="text" id="search" class="search-input" placeholder="Search packages...">
+        </div>
+        <div id="filters" class="filter-row">
+            <button class="chip is-active" data-filter="all">All</button>
+            <button class="chip" data-filter="detached">Detached</button>
+            <button class="chip" data-filter="attached">Attached</button>
+        </div>
+    </header>
 
-	<p class="empty-state" id="empty-state" hidden>No packages match your search.</p>
-	<p class="loading-state" id="loading-state">
-		<span class="spinner" aria-hidden="true"></span>
-		Loading package list…
-	</p>
+    <main id="apps-list" class="apps-list"></main>
 
-	<footer class="action-bar" id="action-bar">
-		<span class="pending-label" id="pending-label">No pending changes</span>
-		<button class="apply-btn" id="detach">Apply</button>
-	</footer>
+    <div id="loading-state" class="state-container" style="display: flex;">
+        <div class="spinner"></div>
+        <span>Loading packages...</span>
+    </div>
 
-	<template id="app-template">
-		<div class="app-row">
-			<label class="switch">
-				<input type="checkbox" class="checkbox">
-				<span class="track">
-					<span class="wire wire-left"></span>
-					<span class="wire wire-right"></span>
-					<span class="knob"></span>
-				</span>
-			</label>
-			<div class="app-info">
-				<p class="name"></p>
-				<p class="state-label"></p>
-			</div>
-		</div>
-	</template>
+    <div id="empty-state" class="state-container">
+        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+        </svg>
+        <span>No applications found.</span>
+    </div>
+
+    <footer class="action-bar">
+        <span id="pending-label" class="pending-label">No pending changes</span>
+        <button id="detach" class="apply-btn" disabled>Apply Changes</button>
+    </footer>
+
+    <script type="module" src="index.txt"></script>
 </body>
-
 </html>
