@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------
    Design tokens
-   Konsep: "trace/kabel yang diputus" - metafora untuk binder detach.
-   Dark, teknikal, tanpa font CDN (webui ini harus tetap jalan offline).
+   Concept: a "severed trace/wire" - a visual metaphor for binder detach.
+   Dark, technical, no CDN fonts (this WebUI must keep working offline).
 ------------------------------------------------------------------ */
 :root {
 	--bg: #0f1213;
@@ -126,6 +126,11 @@ body {
 	transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
+.chip:hover:not(.is-active) {
+	border-color: var(--text-faint);
+	color: var(--text);
+}
+
 .chip.is-active {
 	color: var(--bg);
 	background: var(--accent);
@@ -151,6 +156,11 @@ body {
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
 	padding: 12px 14px;
+	transition: border-color 0.15s ease;
+}
+
+.app-row:has(.checkbox:focus-visible) {
+	border-color: var(--accent-line);
 }
 
 .app-info {
@@ -180,10 +190,35 @@ body {
 
 .empty-state,
 .loading-state {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
 	text-align: center;
 	color: var(--text-faint);
 	font-size: 13px;
 	padding: 40px 20px;
+}
+
+.spinner {
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	border: 2px solid var(--border);
+	border-top-color: var(--accent);
+	animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.spinner {
+		animation: none;
+	}
 }
 
 /* ---------------------------------------------------------------
