@@ -1,84 +1,124 @@
-#!/usr/bin/env bash
-# build_release.sh - assemble zygisk-detach-*.zip yang siap di-flash Magisk/KernelSU
-#
-# PRASYARAT (harus sudah terpasang di mesin kamu, bukan di sini):
-#   - Android NDK (untuk compile module/jni -> zygisk/*.so)
-#   - Rust nightly + target Android untuk cli (aarch64-linux-android,
-#     armv7-linux-androideabi, i686-linux-android, x86_64-linux-android)
-#   - Node.js/Bun (untuk build ksu-webui dengan parcel)
-#   - `zip`
-#
-# Jalankan dari root repo: ./build_release.sh
-set -euo pipefail
+name: Build and release
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUT="$ROOT/out"
-STAGE="$OUT/stage"
-rm -rf "$OUT"
-mkdir -p "$STAGE/zygisk" "$STAGE/bin"
+# Jalan otomatis kalau kamu push tag berbentuk v1.2.3
+# Contoh cara pakai dari laptop:
+#   git tag v1.23.3
+#   git push origin v1.23.3
+on:
+  push:
+    tags:
+      - "v*"
 
-VERSION=$(grep -m1 '^version=' "$ROOT/module/module.prop" | cut -d= -f2)
-VERSION_CODE=$(grep -m1 '^versionCode=' "$ROOT/module/module.prop" | cut -d= -f2)
-ZIP_NAME="zygisk-detach-${VERSION}.zip"
+permissions:
+  contents: write # perlu ini biar boleh upload ke Release
 
-echo "==> [1/4] Build zygisk native module (.so per ABI)"
-: "${ANDROID_NDK_HOME:?set ANDROID_NDK_HOME to your NDK path}"
-declare -A ABI_TRIPLE=(
-	[arm64-v8a]="aarch64-linux-android24"
-	[armeabi-v7a]="armv7a-linux-androideabi24"
-	[x86]="i686-linux-android24"
-	[x86_64]="x86_64-linux-android24"
-)
-TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-for abi in "${!ABI_TRIPLE[@]}"; do
-	triple="${ABI_TRIPLE[$abi]}"
-	echo "  - $abi ($triple)"
-	"$TOOLCHAIN/${triple}-clang++" -shared -fPIC -O2 -Wall \
-		-I"$ROOT/zygisk/jni" \
-		"$ROOT/zygisk/jni/module.cpp" "$ROOT/zygisk/jni/binder.cpp" \
-		-llog -o "$STAGE/zygisk/${abi}.so"
-done
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-echo "==> [2/4] Build cli 'detach' binary per arch"
-declare -A RUST_TARGET=(
-	[arm64]="aarch64-linux-android"
-	[arm]="armv7-linux-androideabi"
-	[x64]="x86_64-linux-android"
-	[x86]="i686-linux-android"
-)
-pushd "$ROOT/cli" >/dev/null
-for arch in "${!RUST_TARGET[@]}"; do
-	target="${RUST_TARGET[$arch]}"
-	echo "  - $arch ($target)"
-	rustup target add "$target" >/dev/null
-	cargo +nightly build --profile release-pr --target "$target"
-	mkdir -p "$STAGE/bin/$arch"
-	cp "target/$target/release-pr/cli" "$STAGE/bin/$arch/detach"
-	# ksu_profile: taruh binary prebuilt-mu sendiri di sini kalau punya,
-	# kalau tidak, hapus baris pemanggilannya di module/customize.sh -
-	# itu cuma dipakai untuk auto-set profile KernelSU, bukan wajib.
-	if [ -f "$ROOT/prebuilt/ksu_profile-$arch" ]; then
-		cp "$ROOT/prebuilt/ksu_profile-$arch" "$STAGE/bin/$arch/ksu_profile"
-	fi
-done
-popd >/dev/null
+      - name: Ambil versi dari tag
+        id: ver
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
-echo "==> [3/4] Build ksu-webui"
-pushd "$ROOT/ksu-webui" >/dev/null
-npm install
-npx parcel build src/index.html --dist-dir dist --public-url .
-mkdir -p "$STAGE/webroot"
-cp -r dist/* "$STAGE/webroot/"
-popd >/dev/null
+      # ---------- 1. Build zygisk/*.so pakai Android NDK ----------
+      - name: Setup Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
 
-echo "==> [4/4] Assemble zip"
-cp -r "$ROOT/module/META-INF" "$STAGE/"
-cp "$ROOT/module/module.prop" "$ROOT/module/customize.sh" "$ROOT/module/post-fs-data.sh" "$STAGE/"
-chmod +x "$STAGE/customize.sh" "$STAGE/post-fs-data.sh"
+      - name: Build zygisk native module (semua ABI)
+        env:
+          NDK: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -e
+          mkdir -p out/stage/zygisk
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          declare -A ABI_TRIPLE=(
+            [arm64-v8a]="aarch64-linux-android24"
+            [armeabi-v7a]="armv7a-linux-androideabi24"
+            [x86]="i686-linux-android24"
+            [x86_64]="x86_64-linux-android24"
+          )
+          for abi in "${!ABI_TRIPLE[@]}"; do
+            triple="${ABI_TRIPLE[$abi]}"
+            echo "building $abi ($triple)"
+            "$TOOLCHAIN/${triple}-clang++" -shared -fPIC -O2 -Wall \
+              -I zygisk/jni \
+              zygisk/jni/module.cpp zygisk/jni/binder.cpp \
+              -llog -o "out/stage/zygisk/${abi}.so"
+          done
 
-pushd "$STAGE" >/dev/null
-zip -r9 "$OUT/$ZIP_NAME" . -x '.*'
-popd >/dev/null
+      # ---------- 2. Build cli 'detach' pakai Rust ----------
+      - name: Setup Rust
+        run: |
+          rustup toolchain install nightly
+          rustup default nightly
+          rustup target add \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            x86_64-linux-android \
+            i686-linux-android
 
-echo ""
-echo "Selesai: $OUT/$ZIP_NAME (module.prop version=$VERSION versionCode=$VERSION_CODE)"
+      - name: Install cargo-ndk (linker helper utk target Android)
+        run: cargo install cargo-ndk
+
+      - name: Build cli semua arch
+        env:
+          NDK: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -e
+          cd cli
+          declare -A RUST_TARGET=(
+            [arm64]="aarch64-linux-android"
+            [arm]="armv7-linux-androideabi"
+            [x64]="x86_64-linux-android"
+            [x86]="i686-linux-android"
+          )
+          for arch in "${!RUST_TARGET[@]}"; do
+            target="${RUST_TARGET[$arch]}"
+            echo "building cli for $arch ($target)"
+            cargo ndk --platform 24 --target "$target" -- build --profile release-pr
+            mkdir -p "../out/stage/bin/$arch"
+            cp "target/$target/release-pr/cli" "../out/stage/bin/$arch/detach"
+          done
+          # Catatan: binary 'ksu_profile' sengaja tidak di-build di sini
+          # karena source-nya tidak ada di repo ini. customize.sh akan
+          # tetap jalan tanpa dia (bagian itu cuma opsional untuk
+          # auto-set profile KernelSU).
+
+      # ---------- 3. Build ksu-webui ----------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build webui
+        run: |
+          set -e
+          cd ksu-webui
+          npm install
+          npx parcel build src/index.html --dist-dir dist --public-url .
+          mkdir -p ../out/stage/webroot
+          cp -r dist/* ../out/stage/webroot/
+
+      # ---------- 4. Susun & zip modul ----------
+      - name: Assemble module zip
+        run: |
+          set -e
+          cp -r module/META-INF out/stage/
+          cp module/module.prop module/customize.sh module/post-fs-data.sh out/stage/
+          chmod +x out/stage/customize.sh out/stage/post-fs-data.sh
+          cd out/stage
+          zip -r9 "../zygisk-detach-${{ steps.ver.outputs.tag }}.zip" . -x '.*'
+
+      # ---------- 5. Upload ke GitHub Release ----------
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/zygisk-detach-${{ steps.ver.outputs.tag }}.zip
+          name: ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
