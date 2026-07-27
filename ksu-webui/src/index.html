@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 
 <head>
 	<meta charset="UTF-8">
@@ -20,24 +20,28 @@
 				<circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6" />
 				<path d="M18 18L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
 			</svg>
-			<input type="text" class="search-input" id="search" placeholder="Cari nama paket…">
+			<input type="text" class="search-input" id="search" placeholder="Search package name…" autocomplete="off"
+				spellcheck="false">
 		</div>
-		<div class="filter-row" id="filters">
-			<button class="chip is-active" data-filter="all">Semua</button>
-			<button class="chip" data-filter="detached">Detached</button>
-			<button class="chip" data-filter="attached">Attached</button>
+		<div class="filter-row" id="filters" role="tablist" aria-label="Filter packages">
+			<button class="chip is-active" data-filter="all" role="tab" aria-selected="true">All</button>
+			<button class="chip" data-filter="detached" role="tab" aria-selected="false">Detached</button>
+			<button class="chip" data-filter="attached" role="tab" aria-selected="false">Attached</button>
 		</div>
 	</header>
 
 	<main id="apps-list" class="apps-list" aria-live="polite"></main>
 
-	<p class="empty-state" id="empty-state" hidden>Tidak ada paket yang cocok.</p>
-	<p class="loading-state" id="loading-state">Memuat daftar paket…</p>
+	<p class="empty-state" id="empty-state" hidden>No packages match your search.</p>
+	<p class="loading-state" id="loading-state">
+		<span class="spinner" aria-hidden="true"></span>
+		Loading package list…
+	</p>
 
-	<div class="action-bar" id="action-bar">
-		<span class="pending-label" id="pending-label">Tidak ada perubahan</span>
-		<button class="apply-btn" id="detach">Terapkan</button>
-	</div>
+	<footer class="action-bar" id="action-bar">
+		<span class="pending-label" id="pending-label">No pending changes</span>
+		<button class="apply-btn" id="detach">Apply</button>
+	</footer>
 
 	<template id="app-template">
 		<div class="app-row">
