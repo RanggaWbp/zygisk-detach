@@ -16,13 +16,23 @@ let allPackages = 0;
 const detach_list = [];
 const initiallyDetached = new Set();
 
+const LOG_DIR = '/data/adb/modules/zygisk-detach/webui.log';
+
+// Escape a string so it can be safely embedded inside single quotes in a
+// POSIX shell command, e.g. echo '...'. The previous implementation used
+// `.replaceAll("'", "\'")`, but `"\'"` is just the character `'` in a JS
+// string literal, so it silently did nothing - any single quote in the
+// logged command/stdout/stderr would have broken out of the shell string.
+// The correct POSIX-safe replacement is: ' -> '\''
+function shellSingleQuoteEscape(str) {
+	return str.replaceAll("'", `'\\''`);
+}
+
 async function run(cmd) {
-	const LOG_DIR = "/data/adb/modules/zygisk-detach/webui.log";
 	const { errno, stdout, stderr } = await exec(cmd);
 	if (errno != 0) {
-		toast(`Command '${cmd}' fail.`)
+		toast(`Command '${cmd}' failed.`);
 		toast(stderr);
-		// this is not properly escaped, whatever
 		const fullLog = `\
 CMD: ${cmd}
 
@@ -30,9 +40,9 @@ STDERR:
 ${stderr}
 
 STDOUT:
-${stdout}`.replaceAll("'", "\'");
-		exec(`echo '${fullLog}' > '${LOG_DIR}'`).then(() => {
-			toast(`Full logs are saved in '${LOG_DIR}'`);
+${stdout}`;
+		exec(`echo '${shellSingleQuoteEscape(fullLog)}' > '${LOG_DIR}'`).then(() => {
+			toast(`Full log saved to '${LOG_DIR}'`);
 		});
 		return undefined;
 	} else {
@@ -45,7 +55,8 @@ function updateStats() {
 }
 
 function updatePendingLabel() {
-	// pending = ada perubahan dibanding state awal
+	// "Pending" means the current selection differs from the state we
+	// started with when the page loaded.
 	const initial = initiallyDetached;
 	const current = new Set(detach_list);
 	let changed = initial.size !== current.size;
@@ -55,10 +66,10 @@ function updatePendingLabel() {
 		}
 	}
 	if (changed) {
-		pendingLabel.textContent = 'Ada perubahan belum diterapkan';
+		pendingLabel.textContent = 'You have unapplied changes';
 		applyBtn.disabled = false;
 	} else {
-		pendingLabel.textContent = 'Tidak ada perubahan';
+		pendingLabel.textContent = 'No pending changes';
 		applyBtn.disabled = detach_list.length === 0 && initial.size === 0;
 	}
 }
@@ -66,8 +77,8 @@ function updatePendingLabel() {
 function setRowState(row, checkbox, name) {
 	row.dataset.state = checkbox.checked ? 'detached' : 'attached';
 	row.querySelector('.state-label').textContent = checkbox.checked
-		? 'Detached — diabaikan Play Store'
-		: 'Attached — mengikuti update normal';
+		? 'Detached — ignored by Play Store'
+		: 'Attached — receives normal updates';
 }
 
 function applyFilterAndSearch() {
@@ -117,30 +128,31 @@ function populateApp(name, checked) {
 }
 
 async function main() {
-	const pkgs = await run("pm list packages");
+	const pkgs = await run('pm list packages');
 	if (pkgs === undefined) {
-		loadingState.textContent = 'Gagal memuat daftar paket.';
+		loadingState.textContent = 'Failed to load package list.';
 		return;
 	}
 
-	const detached_list_out = await run("/data/adb/modules/zygisk-detach/detach list");
+	const detached_list_out = await run('/data/adb/modules/zygisk-detach/detach list');
 	if (detached_list_out === undefined) {
-		loadingState.textContent = 'Gagal membaca status detach.';
+		loadingState.textContent = 'Failed to read detach status.';
 		return;
 	}
 	const detached = detached_list_out ? detached_list_out.split('\n').filter(Boolean) : [];
-	const uninstalled = detached ? [...detached] : [];
+	const uninstalled = [...detached];
 	const pkgNames = pkgs.split('\n').map((line) => line.split(':')[1]).filter(Boolean);
 
 	for (const pkg of pkgNames) {
-		const incls = detached.includes(pkg);
-		populateApp(pkg, incls);
-		if (incls) {
+		const isDetached = detached.includes(pkg);
+		populateApp(pkg, isDetached);
+		if (isDetached) {
 			const index = uninstalled.indexOf(pkg);
 			if (index > -1) uninstalled.splice(index, 1);
 		}
 	}
-	// paket yang tercatat detached tapi sudah tidak terinstall lagi
+	// Packages recorded as detached but no longer installed still get a row,
+	// so the user can see and clear their detach state.
 	for (const pkg of uninstalled) populateApp(pkg, true);
 
 	allPackages = appsList.children.length;
@@ -158,23 +170,38 @@ async function main() {
 	filtersEl.addEventListener('click', (e) => {
 		const btn = e.target.closest('.chip');
 		if (!btn) return;
-		filtersEl.querySelectorAll('.chip').forEach((c) => c.classList.remove('is-active'));
+		filtersEl.querySelectorAll('.chip').forEach((c) => {
+			c.classList.remove('is-active');
+			c.setAttribute('aria-selected', 'false');
+		});
 		btn.classList.add('is-active');
+		btn.setAttribute('aria-selected', 'true');
 		currentFilter = btn.dataset.filter;
 		applyFilterAndSearch();
 	});
 
 	applyBtn.addEventListener('click', () => {
+		// Disable immediately to guard against double-taps firing the
+		// detach command twice while the first call is still in flight.
+		applyBtn.disabled = true;
 		if (detach_list.length == 0) {
-			run("/data/adb/modules/zygisk-detach/detach reset").then(() => {
-				toast('Semua paket dikembalikan ke attached.');
+			run('/data/adb/modules/zygisk-detach/detach reset').then((out) => {
+				if (out === undefined) {
+					updatePendingLabel();
+					return;
+				}
+				toast('All packages restored to attached.');
 				initiallyDetached.clear();
 				updatePendingLabel();
 			});
 		} else {
 			const detach_arg = detach_list.join(' ');
 			run(`/data/adb/modules/zygisk-detach/detach detachall ${detach_arg}`).then((out) => {
-				toast(out || 'Perubahan diterapkan.');
+				if (out === undefined) {
+					updatePendingLabel();
+					return;
+				}
+				toast(out || 'Changes applied.');
 				initiallyDetached.clear();
 				detach_list.forEach((p) => initiallyDetached.add(p));
 				updatePendingLabel();
