@@ -68,7 +68,11 @@ defer:
         LOGD("ERROR write: %s", strerror(errno));
         size = 0;
     }
-    if (fd > 0) {
+    if (fd >= 0) {
+        // NOTE: this was previously `fd > 0`, which leaked the descriptor
+        // (and skipped sendfile) in the edge case where open() returns fd 0
+        // (e.g. stdin closed in the companion process). A valid fd is any
+        // value >= 0, so this must be >= 0.
         if (size > 0 && sendfile(remote_fd, fd, NULL, size) < 0) {
             LOGD("ERROR sendfile: %s", strerror(errno));
         }
