@@ -2,6 +2,6 @@ id=zygisk-detach
 name=zygisk-detach
 version=v1.23.3
 versionCode=35
-author=j-hc
+author=j-hc fork RanggaWbp
 description=Detaches installed apps from Play Store
 updateJson=https://raw.githubusercontent.com/RanggaWbp/zygisk-detach/master/update.json
