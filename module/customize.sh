@@ -1,57 +1,60 @@
 #!/system/bin/sh
+# ============================================
+# Zygisk Detach Fork - Installation Script
+# ============================================
 
-chmod -R +x "$MODPATH/bin/"
+SKIPUNZIP=0
 
-if [ -n "$KSU" ]; then
-	ui_print "- KernelSU detected. Make sure you are using a Zygisk module!"
-
-	uid=$(dumpsys package "com.android.vending" 2>&1 | grep -m1 "uid")
-	uid=${uid#*=} uid=${uid%% *}
-	if [ -z "$uid" ]; then
-		uid=$(dumpsys package "com.android.vending" 2>&1 | grep -m1 "userId")
-		uid=${uid#*=} uid=${uid%% *}
-	fi
-	if [ -z "$uid" ]; then
-		ui_print "* UID could not be found for com.android.vending"
-		return 1
-	fi
-
-	if ! OP=$("$MODPATH/bin/$ARCH/ksu_profile" "$uid" "com.android.vending" 2>&1); then
-		ui_print "ERROR ksu_profile: $OP"
-	fi
+# API check
+API=$(getprop ro.build.version.sdk)
+if [ "$API" -lt 24 ]; then
+    abort "! Minimal Android 7.0 (API 24) required"
 fi
 
-mv -f "$MODPATH/bin/$ARCH/detach" "$MODPATH/detach"
-mkdir -p /data/adb/zygisk-detach/
+# Detect architecture
+ARCH=$(getprop ro.product.cpu.abi)
+ui_print "- Architecture: $ARCH"
+ui_print "- Android API: $API"
+ui_print "- Device: $(getprop ro.product.model)"
 
-DBIN="/data/adb/zygisk-detach/detach.bin"
-
-# preserve detach.bin for older versions
-if [ -f "/data/adb/modules/zygisk-detach/detach.bin" ]; then
-	cp -f "/data/adb/modules/zygisk-detach/detach.bin" $DBIN
+# Detect OEM
+OEM=""
+if [ -d "/data/miui" ] || [ "$(getprop ro.miui.ui.version.name)" != "" ]; then
+    OEM="MIUI"
+elif [ "$(getprop ro.build.version.oneui)" != "" ]; then
+    OEM="ONEUI"
+elif [ "$(getprop ro.build.version.opporom)" != "" ]; then
+    OEM="COLOROS"
+elif [ "$(getprop ro.build.version.emui)" != "" ]; then
+    OEM="EMUI"
 fi
 
-if [ -f "$MODPATH/detach.txt" ]; then
-	ui_print "- detach.txt inside module: generating detach.bin"
-	OP=$("$MODPATH"/detach serialize "$MODPATH/detach.txt" $DBIN 2>&1)
-	ui_print "$OP"
-elif [ -f "$MODPATH/detach.bin" ]; then
-	ui_print "- detach.bin inside module: applying"
-	mv -f "$MODPATH/detach.bin" $DBIN
+if [ "$OEM" != "" ]; then
+    ui_print "- Detected OEM: $OEM (Loading compat layer)"
 fi
 
-CLIPATH=/data/data/com.termux/files/usr/bin/
-if [ -d $CLIPATH ]; then
-	echo 'su -c /data/adb/modules/zygisk-detach/detach "$@"' >$CLIPATH/detach
-	chmod 777 $CLIPATH/detach
-	ui_print "- Run 'detach' in termux after the reboot"
-else
-	ui_print "- Install termux to use the 'detach' cli"
-fi
+# Extract files
+ui_print "- Extracting module files..."
+unzip -o "$ZIPFILE" -d "$MODPATH" >/dev/null 2>&1
 
-ui_print "- Or use zygisk-detach-app"
-if [ -n "$KSU" ]; then
-	ui_print "- Or use the WebUI from KernelSU app"
-fi
-ui_print ""
-ui_print "  by j-hc (github.com/j-hc)"
+# Set permissions
+ui_print "- Setting permissions..."
+set_perm_recursive "$MODPATH" 0 0 0755 0644
+set_perm "$MODPATH/service.sh" 0 0 0755
+set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
+
+# Create config directory
+mkdir -p "$MODPATH/config"
+touch "$MODPATH/config/detach.list"
+
+ui_print " "
+ui_print "  ╔══════════════════════════════════════╗"
+ui_print "  ║   Zygisk Detach Fork - Installed!     ║"
+ui_print "  ║                                      ║"
+ui_print "  ║   Add packages to detach in:        ║"
+ui_print "  ║   /data/adb/detach/detach.list      ║"
+ui_print "  ║                                      ║"
+ui_print "  ║   Format: one package per line      ║"
+ui_print "  ║   Example: com.example.app          ║"
+ui_print "  ╚══════════════════════════════════════╝"
+ui_print " "
